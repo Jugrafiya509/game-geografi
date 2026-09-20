@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Kamera 2 Pilihan Jawaban</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      background-color: #181818;
+      color: white;
+      margin: 0;
+      padding: 10px;
+    }
+
+    /* Setup / Form Box */
+    #setup-box {
+      background: #2a2a2a;
+      padding: 25px;
+      border-radius: 12px;
+      width: 360px;
+      margin: 40px auto;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.6);
+    }
+    .form-group {
+      margin-bottom: 15px;
+      text-align: left;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+    input[type="text"], select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #333;
+      color: white;
+      box-sizing: border-box;
+      font-size: 15px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      background-color: #008cba;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background-color: #005f73;
+    }
+
+    /* Area Game & HUD */
+    #hud {
+      display: flex;
+      justify-content: space-between;
+      max-width: 640px;
+      margin: 0 auto 10px auto;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    #timer-box { color: #ffbe0b; }
+    #score-box { color: #00f5d4; }
+
+    #question-box {
+      font-size: 22px;
+      margin: 15px auto;
+      font-weight: bold;
+      min-height: 60px;
+      max-width: 640px;
+      line-height: 1.3;
+    }
+
+    #game-container {
+      position: relative;
+      width: 640px;
+      height: 480px;
+      margin: 10px auto;
+      border: 4px solid #fff;
+      border-radius: 10px;
+      overflow: hidden;
+      display: none;
+      background: #000;
+    }
+
+    video, canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 640px;
+      height: 480px;
+      transform: scaleX(-1);
+    }
+
+    /* Zona Pilihan Jawaban Dinamis */
+    .zone {
+      position: absolute;
+      top: 0;
+      width: 50%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      font-weight: bold;
+      opacity: 0.45;
+      pointer-events: none;
+      padding: 10px;
+      box-sizing: border-box;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+    }
+    .zone small {
+      font-size: 14px;
+      margin-top: 8px;
+      font-weight: normal;
+      background: rgba(0,0,0,0.5);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    #zone-salah { left: 0; background-color: #e74c3c; } /* Kiri Layar */
+    #zone-benar { right: 0; background-color: #2ecc71; } /* Kanan Layar */
+
+    #status-msg {
+      font-size: 20px;
+      color: #f1c40f;
+      margin-top: 10px;
+      font-weight: bold;
+      min-height: 30px;
+    }
+
+    /* Efek Kilatan Animasi */
+    @keyframes flashAnimation {
+      0% { opacity: 0; }
+      25% { opacity: 0.75; }
+      100% { opacity: 0; }
+    }
+
+    #flash-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    .flash-correct {
+      background-color: #2ecc71;
+      animation: flashAnimation 0.6s ease-out;
+    }
+
+    .flash-wrong {
+      background-color: #e74c3c;
+      animation: flashAnimation 0.6s ease-out;
+    }
+  </style>
+
+  <!-- MediaPipe Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+  <h1>Game Motion Sensor - 2 Pilihan Jawaban</h1>
+
+  <!-- Form Pendaftaran / Setup -->
+  <div id="setup-box">
+    <h3>Pengaturan Pemain</h3>
+    <div id="loading-data">Memuat paket soal dari Google Sheets...</div>
+    
+    <div id="form-content" style="display:none;">
+      <div class="form-group">
+        <label for="playerName">Nama / Kelompok:</label>
+        <input type="text" id="playerName" placeholder="Contoh: Kelompok 1" required>
+      </div>
+      <div class="form-group">
+        <label for="paketSelect">Pilih Paket Soal:</label>
+        <select id="paketSelect"></select>
+      </div>
+      <button onclick="startGame()">Mulai Game</button>
+    </div>
+  </div>
+
+  <!-- Area Game -->
+  <div id="game-area" style="display:none;">
+    <div id="hud">
+      <div id="timer-box">Sisa Waktu: -</div>
+      <div id="score-box">Skor: 0</div>
+    </div>
+    
+    <div id="question-box">Menyiapkan...</div>
+
+    <div id="game-container">
+      <video id="webcam" autoplay playsinline></video>
+      <canvas id="output_canvas"></canvas>
+
+      <!-- Overlay Animasi Kilatan -->
+      <div id="flash-overlay"></div>
+
+      <!-- Zona Pilihan (Label Diisi Dinamis dari Sheet) -->
+      <div id="zone-salah" class="zone">Opsi Kiri</div>
+      <div id="zone-benar" class="zone">Opsi Kanan</div>
+    </div>
+
+    <div id="status-msg"></div>
+
+    <!-- Tombol Restart Game -->
+    <button id="btn-restart" onclick="restartGame()" style="display:none; margin: 20px auto; width: 220px; background-color: #2ecc71;">
+      🔄 Main Lagi
+    </button>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. ISI DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA
+    // =========================================================================
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzcz42sqFPhhZVPHZ0Es12Cg9GckeOOsd_kxsQmZ-STCU6GkE4Zh5pB-iDadIhbVS23/exec"; // <-- GANTI URL DI SINI
+
+    let appData = null;
+    let selectedQuestions = [];
+    let currentQ = 0;
+    let score = 0;
+    let canAnswer = false;
+    let playerName = "";
+    let selectedPaket = "";
+    
+    let timerInterval = null;
+    let timeLeft = 0;
+    let cameraStarted = false;
+
+    // Elemen DOM
+    const qBox = document.getElementById('question-box');
+    const timerBox = document.getElementById('timer-box');
+    const scoreBox = document.getElementById('score-box');
+    const statusMsg = document.getElementById('status-msg');
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const flashOverlay = document.getElementById('flash-overlay');
+
+    // =========================================================================
+    // 2. EFEK SUARA SINTETIS (WEB AUDIO API)
+    // =========================================================================
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+
+    function playSound(type) {
+      if (!audioCtx) audioCtx = new AudioContext();
+      
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      const now = audioCtx.currentTime;
+
+      if (type === 'correct') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, now); // D5
+        osc.frequency.setValueAtTime(880, now + 0.1); // A5
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      } else if (type === 'wrong') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.setValueAtTime(100, now + 0.15);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      } else if (type === 'timeout') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.setValueAtTime(200, now + 0.2);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        osc.start(now);
+        osc.stop(now + 0.5);
+      }
+    }
+
+    // =========================================================================
+    // 3. EFEK KILATAN ANIMASI VISUAL
+    // =========================================================================
+    function triggerFlash(type) {
+      flashOverlay.className = '';
+      if (type === 'correct') {
+        flashOverlay.classList.add('flash-correct');
+      } else if (type === 'wrong' || type === 'timeout') {
+        flashOverlay.classList.add('flash-wrong');
+      }
+      setTimeout(() => { flashOverlay.className = ''; }, 600);
+    }
+
+    // =========================================================================
+    // 4. MEMUAT DATA SPREADSHEET & LOGIKA GAME
+    // =========================================================================
+    window.onload = function() {
+      fetch(SCRIPT_URL)
+        .then(res => res.json())
+        .then(data => {
+          appData = data;
+          populatePaketDropdown(data.daftarPaket);
+          document.getElementById('loading-data').style.display = 'none';
+          document.getElementById('form-content').style.display = 'block';
+        })
+        .catch(err => {
+          console.error(err);
+          document.getElementById('loading-data').innerText = "❌ Gagal memuat data dari Spreadsheet. Periksa SCRIPT_URL.";
+        });
+    };
+
+    function populatePaketDropdown(paketList) {
+      const select = document.getElementById('paketSelect');
+      select.innerHTML = "";
+      paketList.forEach(paket => {
+        const opt = document.createElement('option');
+        opt.value = paket;
+        opt.innerText = paket;
+        select.appendChild(opt);
+      });
+    }
+
+    function startGame() {
+      const nameInput = document.getElementById('playerName').value.trim();
+      if (!nameInput) {
+        alert("Harap masukkan nama terlebih dahulu!");
+        return;
+      }
+      playerName = nameInput;
+      selectedPaket = document.getElementById('paketSelect').value;
+      selectedQuestions = appData.bankSoal[selectedPaket] || [];
+
+      if (selectedQuestions.length === 0) {
+        alert("Paket soal kosong!");
+        return;
+      }
+
+      document.getElementById('setup-box').style.display = 'none';
+      document.getElementById('game-area').style.display = 'block';
+      document.getElementById('game-container').style.display = 'block';
+
+      if (!cameraStarted) {
+        initCamera();
+        cameraStarted = true;
+      }
+      
+      currentQ = 0;
+      score = 0;
+      scoreBox.innerText = `Skor: ${score}`;
+      showQuestion();
+    }
+
+    function showQuestion() {
+      clearInterval(timerInterval);
+
+      if (currentQ < selectedQuestions.length) {
+        const item = selectedQuestions[currentQ];
+        qBox.innerText = `Soal ${currentQ + 1} (${selectedPaket}): ${item.q}`;
+        
+        // Update Teks Opsi Jawaban di Layar secara Dinamis
+        document.getElementById('zone-salah').innerHTML = `${item.optKiri}<br><small>(Tangan Kiri)</small>`;
+        document.getElementById('zone-benar').innerHTML = `${item.optKanan}<br><small>(Tangan Kanan)</small>`;
+
+        canAnswer = true;
+        
+        // Timer
+        timeLeft = appData.timer;
+        timerBox.innerText = `Sisa Waktu: ${timeLeft}s`;
+        
+        timerInterval = setInterval(() => {
+          timeLeft--;
+          timerBox.innerText = `Sisa Waktu: ${timeLeft}s`;
+          if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+            handleTimeOut();
+          }
+        }, 1000);
+
+      } else {
+        finishGame();
+      }
+    }
+
+    function handleTimeOut() {
+      canAnswer = false;
+      statusMsg.innerText = "⏰ Waktu Habis!";
+      playSound('timeout');
+      triggerFlash('timeout');
+      nextQuestion();
+    }
+
+    function checkAnswer(userChoice) { // userChoice: 'KIRI' atau 'KANAN'
+      if (!canAnswer || currentQ >= selectedQuestions.length) return;
+      canAnswer = false;
+      clearInterval(timerInterval);
+
+      const kunciJawaban = selectedQuestions[currentQ].kunci; // 'KIRI' atau 'KANAN'
+
+      if (userChoice === kunciJawaban) {
+        score += 10;
+        statusMsg.innerText = "✅ Jawaban Tepat! (+10)";
+        playSound('correct');
+        triggerFlash('correct');
+      } else {
+        statusMsg.innerText = "❌ Jawaban Kurang Tepat!";
+        playSound('wrong');
+        triggerFlash('wrong');
+      }
+
+      scoreBox.innerText = `Skor: ${score}`;
+      nextQuestion();
+    }
+
+    function nextQuestion() {
+      currentQ++;
+      setTimeout(() => {
+        statusMsg.innerText = "";
+        showQuestion();
+      }, 1500);
+    }
+
+    function finishGame() {
+      clearInterval(timerInterval);
+      canAnswer = false;
+
+      // Sembunyikan kamera agar tampilan layar akhir bersih
+      document.getElementById('game-container').style.display = 'none';
+
+      // Ringkasan Skor Akhir
+      qBox.innerHTML = `
+        <div style="background: #2a2a2a; padding: 20px; border-radius: 10px; border: 2px solid #00f5d4; margin-top: 10px;">
+          <h2 style="color: #00f5d4; margin-top: 0;">🎉 Permainan Selesai! 🎉</h2>
+          <p style="font-size: 20px; margin: 8px 0;">Pemain: <strong>${playerName}</strong></p>
+          <p style="font-size: 20px; margin: 8px 0;">Paket Soal: <strong>${selectedPaket}</strong></p>
+          <h1 style="font-size: 48px; color: #ffbe0b; margin: 15px 0;">Skor: ${score}</h1>
+        </div>
+      `;
+      
+      timerBox.innerText = "Sisa Waktu: -";
+      statusMsg.innerText = "Mengirim skor ke Google Sheets...";
+      document.getElementById('btn-restart').style.display = 'block';
+
+      const payload = {
+        nama: playerName,
+        paket: selectedPaket,
+        skor: score
+      };
+
+      fetch(SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+      .then(() => {
+        statusMsg.innerText = "✅ Skor berhasil disimpan ke Google Sheets!";
+      })
+      .catch(err => {
+        console.error(err);
+        statusMsg.innerText = "❌ Gagal menyimpan skor.";
+      });
+    }
+
+    function restartGame() {
+      document.getElementById('game-area').style.display = 'none';
+      document.getElementById('btn-restart').style.display = 'none';
+      document.getElementById('setup-box').style.display = 'block';
+      document.getElementById('playerName').value = '';
+      statusMsg.innerText = '';
+    }
+
+    // =========================================================================
+    // 5. MEDIAPIPE HAND DETECTION
+    // =========================================================================
+    function onResults(results) {
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0 && canAnswer) {
+        for (const landmarks of results.multiHandLandmarks) {
+          const indexFingerX = landmarks[8].x; 
+          
+          // Kamera ter-mirror:
+          // X < 0.35 -> Tangan diarahkan ke KANAN Layar (Opsi Kanan)
+          // X > 0.65 -> Tangan diarahkan ke KIRI Layar (Opsi Kiri)
+          if (indexFingerX < 0.35) {
+            checkAnswer('KANAN');  
+          } else if (indexFingerX > 0.65) {
+            checkAnswer('KIRI'); 
+          }
+        }
+      }
+      canvasCtx.restore();
+    }
+
+    function initCamera() {
+      const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+      hands.setOptions({ 
+        maxNumHands: 1, 
+        modelComplexity: 1, 
+        minDetectionConfidence: 0.5, 
+        minTrackingConfidence: 0.5 
+      });
+      hands.onResults(onResults);
+
+      const camera = new Camera(videoElement, {
+        onFrame: async () => { await hands.send({ image: videoElement }); },
+        width: 640, 
+        height: 480
+      });
+      camera.start();
+    }
+  </script>
+</body>
+</html>
